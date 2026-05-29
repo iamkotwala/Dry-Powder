@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dry Powder Calculator</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #fafaf7; }
+    input[type=number] { font-family: inherit; }
+    input[type=range] { accent-color: #1a1a1a; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo } = React;
+
+    const TRANCHES_4 = [
+      { drop: 10, pct: 9,  label: "First buy",      note: "Real correction territory",   bg: "#FAEEDA", fg: "#633806" },
+      { drop: 20, pct: 18, label: "Sharp decline",  note: "Confidence is shaken",        bg: "#F0997B", fg: "#4A1B0C" },
+      { drop: 30, pct: 27, label: "Bear market",    note: "COVID 2020 territory",        bg: "#F7C1C1", fg: "#501313" },
+      { drop: 40, pct: 36, label: "Crisis",         note: "2008 / deep crash territory", bg: "#F4C0D1", fg: "#4B1528" },
+    ];
+
+    const TRANCHES_8 = [
+      { drop: 10, pct: 5,  label: "Mild dip",        note: "First nibble",                bg: "#FAEEDA", fg: "#633806" },
+      { drop: 15, pct: 8,  label: "Correction",      note: "Getting interesting",         bg: "#FAEEDA", fg: "#633806" },
+      { drop: 20, pct: 12, label: "Sharp decline",   note: "Confidence is shaken",        bg: "#F0997B", fg: "#4A1B0C" },
+      { drop: 25, pct: 15, label: "Deeper",          note: "Real fear emerging",          bg: "#F0997B", fg: "#4A1B0C" },
+      { drop: 30, pct: 15, label: "Bear market",     note: "COVID 2020 territory",        bg: "#F7C1C1", fg: "#501313" },
+      { drop: 35, pct: 15, label: "Deep bear",       note: "Capitulation phase",          bg: "#F7C1C1", fg: "#501313" },
+      { drop: 40, pct: 10, label: "Crisis",          note: "2008 / deep crash",           bg: "#F4C0D1", fg: "#4B1528" },
+      { drop: 45, pct: 10, label: "Deep crisis",     note: "Generational opportunity",    bg: "#F4C0D1", fg: "#4B1528" },
+    ];
+
+    const fmt = (n) => {
+      if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
+      if (n >= 100000)   return `₹${(n / 100000).toFixed(2)}L`;
+      return `₹${Math.round(n).toLocaleString("en-IN")}`;
+    };
+
+    function App() {
+      const [liquidInput, setLiquidInput] = useState("10");
+      const [unit, setUnit] = useState("L");
+      const [portfolioInput, setPortfolioInput] = useState("30");
+      const [portfolioUnit, setPortfolioUnit] = useState("L");
+      const [slabMode, setSlabMode] = useState("4");
+
+      const [niftyAth, setNiftyAth] = useState("26373.20");
+      const [niftyCurrent, setNiftyCurrent] = useState("23590.25");
+      const [useNifty, setUseNifty] = useState(true);
+      const [manualDrop, setManualDrop] = useState(10);
+
+      const TRANCHES = slabMode === "4" ? TRANCHES_4 : TRANCHES_8;
+
+      const ath = parseFloat(niftyAth) || 0;
+      const current = parseFloat(niftyCurrent) || 0;
+      const calculatedDrop = ath > 0 ? ((ath - current) / ath) * 100 : 0;
+      const drop = useNifty ? Math.max(0, Math.round(calculatedDrop * 10) / 10) : manualDrop;
+
+      const liquid = useMemo(() => {
+        const n = parseFloat(liquidInput) || 0;
+        return unit === "L" ? n * 100000 : n * 10000000;
+      }, [liquidInput, unit]);
+
+      const portfolio = useMemo(() => {
+        const n = parseFloat(portfolioInput) || 0;
+        return portfolioUnit === "L" ? n * 100000 : n * 10000000;
+      }, [portfolioInput, portfolioUnit]);
+
+      const totalNetWorth = liquid + portfolio;
+      const dryPowderPct = totalNetWorth > 0 ? (liquid / totalNetWorth) * 100 : 0;
+
+      const rows = useMemo(() => {
+        let cumPct = 0;
+        return TRANCHES.map((t, i) => {
+          const amount = liquid * (t.pct / 100);
+          const triggered = drop >= t.drop;
+          cumPct += t.pct;
+          return { ...t, amount, triggered, cumPct, i };
+        });
+      }, [liquid, drop, TRANCHES]);
+
+      const deployed = rows.filter(r => r.triggered).reduce((s, r) => s + r.amount, 0);
+      const remaining = liquid - deployed;
+      const depPct = liquid > 0 ? Math.round((deployed / liquid) * 100) : 0;
+      const remPct = liquid > 0 ? Math.round((remaining / liquid) * 100) : 0;
+      const nextTranche = rows.find(r => !r.triggered);
+      const activeCount = rows.filter(r => r.triggered).length;
+
+      let allocZone = { color: "#0F6E56", bg: "#E1F5EE", label: "Lean", advice: "Aggressive — most capital working" };
+      if (dryPowderPct >= 15 && dryPowderPct < 35) {
+        allocZone = { color: "#854F0B", bg: "#FAEEDA", label: "Balanced", advice: "Good middle ground for expensive markets" };
+      } else if (dryPowderPct >= 35 && dryPowderPct < 50) {
+        allocZone = { color: "#993C1D", bg: "#FAECE7", label: "Defensive", advice: "Heavy cash — only justified if market looks expensive" };
+      } else if (dryPowderPct >= 50) {
+        allocZone = { color: "#A32D2D", bg: "#FCEBEB", label: "Cash heavy", advice: "Cash drag will hurt long-term compounding" };
+      }
+
+      const targetForNext = nextTranche && ath ? ath * (1 - nextTranche.drop / 100) : null;
+      const pointsToNext = targetForNext ? current - targetForNext : 0;
+
+      const cardStyle = { background: "#ffffff", border: "0.5px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: "16px 20px" };
+      const labelStyle = { fontSize: 11, color: "rgba(0,0,0,0.5)", letterSpacing: ".06em", marginBottom: 6 };
+      const darkInputStyle = {
+        background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.15)",
+        color: "white", fontSize: 18, fontWeight: 500, padding: "6px 10px",
+        borderRadius: 6, fontFamily: "inherit", width: "100%"
+      };
+
+      return (
+        <div style={{ padding: "24px 20px", color: "#1a1a1a" }}>
+          <div style={{ maxWidth: 720, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 500, margin: 0 }}>Dry powder calculator</h1>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginRight: 4 }}>Slabs:</span>
+                {["4", "8"].map(s => (
+                  <button key={s} onClick={() => setSlabMode(s)} style={{
+                    fontSize: 12, padding: "4px 12px",
+                    fontWeight: slabMode === s ? 500 : 400,
+                    border: "0.5px solid rgba(0,0,0,0.15)", borderRadius: 6,
+                    background: slabMode === s ? "#1a1a1a" : "white",
+                    color: slabMode === s ? "white" : "#1a1a1a",
+                    cursor: "pointer", fontFamily: "inherit"
+                  }}>{s}</button>
+                ))}
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: "rgba(0,0,0,0.6)", marginBottom: 20 }}>
+              {slabMode === "4" ? "Simple 4-tier deployment with 10% tail-risk reserve" : "Granular 8-tier deployment — smoother but more discipline needed"}
+            </p>
+
+            {/* NIFTY INPUT PANEL */}
+            <div style={{ ...cardStyle, marginBottom: 16, background: "#0a0a0a", color: "white", border: "none" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", display: "inline-block", boxShadow: "0 0 8px #22c55e" }} />
+                  <span style={{ fontSize: 10, letterSpacing: ".15em", color: "rgba(255,255,255,0.55)" }}>NIFTY 50 · MANUAL ENTRY</span>
+                </div>
+                <button onClick={() => setUseNifty(!useNifty)} style={{
+                  background: useNifty ? "rgba(34, 197, 94, 0.15)" : "rgba(255,255,255,0.1)",
+                  color: useNifty ? "#22c55e" : "rgba(255,255,255,0.7)",
+                  border: `0.5px solid ${useNifty ? "rgba(34, 197, 94, 0.4)" : "rgba(255,255,255,0.2)"}`,
+                  borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 500,
+                  cursor: "pointer", fontFamily: "inherit"
+                }}>
+                  {useNifty ? "✓ Using Nifty values" : "Use Nifty values"}
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: ".06em", marginBottom: 6 }}>ATH</div>
+                  <input type="number" value={niftyAth} onChange={(e) => setNiftyAth(e.target.value)} step="0.01" style={darkInputStyle} />
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>Editable</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: ".06em", marginBottom: 6 }}>CURRENT</div>
+                  <input type="number" value={niftyCurrent} onChange={(e) => setNiftyCurrent(e.target.value)} step="0.01" style={darkInputStyle} />
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>Update before deploying</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: ".06em", marginBottom: 6 }}>DROP</div>
+                  <div style={{ fontSize: 24, fontWeight: 500, color: drop >= 10 ? "#FAC775" : drop > 0 ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)", lineHeight: 1.3 }}>
+                    −{drop.toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>Auto-calculated</div>
+                </div>
+              </div>
+
+              {!useNifty && (
+                <div style={{ paddingTop: 12, borderTop: "0.5px solid rgba(255,255,255,0.1)" }}>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: ".06em", marginBottom: 8 }}>OR SIMULATE A DROP SCENARIO: −{manualDrop}%</div>
+                  <input type="range" min={0} max={50} step={1} value={manualDrop} onChange={(e) => setManualDrop(+e.target.value)} style={{ width: "100%", accentColor: "#FAC775" }} />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                    <span>0%</span><span>−10%</span><span>−20%</span><span>−30%</span><span>−40%</span><span>−50%</span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "0.5px solid rgba(255,255,255,0.1)", fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                <strong style={{ color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>Tip:</strong> Quick-check Nifty: <a href="https://www.google.com/search?q=nifty+50" target="_blank" rel="noopener noreferrer" style={{ color: "#FAC775", textDecoration: "none" }}>google.com/search?q=nifty+50</a> or your Groww app. Update both fields before each deployment decision.
+              </div>
+            </div>
+
+            {/* Allocation Section */}
+            <div style={{ ...cardStyle, marginBottom: 16, background: allocZone.bg }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <div style={{ ...labelStyle, color: allocZone.color }}>Dry powder allocation</div>
+                  <div style={{ fontSize: 28, fontWeight: 500, color: allocZone.color, lineHeight: 1.1 }}>{dryPowderPct.toFixed(0)}%</div>
+                  <div style={{ fontSize: 12, color: allocZone.color, marginTop: 4, fontWeight: 500 }}>{allocZone.label} · {allocZone.advice}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={labelStyle}>Liquid / Invested</div>
+                  <div style={{ fontSize: 13, color: "rgba(0,0,0,0.75)" }}><strong style={{ fontWeight: 500 }}>{fmt(liquid)}</strong> / {fmt(portfolio)}</div>
+                  <div style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginTop: 2 }}>Total: {fmt(totalNetWorth)}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
+                <div style={{ width: `${dryPowderPct}%`, background: allocZone.color, transition: "width .3s" }} />
+                <div style={{ width: `${100 - dryPowderPct}%`, background: "rgba(0,0,0,0.12)" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "rgba(0,0,0,0.5)" }}>
+                <span>Dry powder</span><span>Already invested</span>
+              </div>
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "0.5px solid rgba(0,0,0,0.1)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(0,0,0,0.65)" }}>
+                  <span>Equity portfolio:</span>
+                  <input type="number" min="0" step="1" value={portfolioInput} onChange={(e) => setPortfolioInput(e.target.value)}
+                    style={{ width: 70, fontSize: 14, fontWeight: 500, border: "0.5px solid rgba(0,0,0,0.15)", borderRadius: 6, padding: "4px 8px", fontFamily: "inherit", background: "white" }} />
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {["L","Cr"].map(u => (
+                      <button key={u} onClick={() => setPortfolioUnit(u)} style={{
+                        fontSize: 11, padding: "3px 9px", fontWeight: portfolioUnit === u ? 500 : 400,
+                        border: "0.5px solid rgba(0,0,0,0.15)", borderRadius: 5,
+                        background: portfolioUnit === u ? "#1a1a1a" : "white",
+                        color: portfolioUnit === u ? "white" : "#1a1a1a", cursor: "pointer", fontFamily: "inherit"
+                      }}>{u}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h2 style={{ fontSize: 16, fontWeight: 500, marginBottom: 12, color: "rgba(0,0,0,0.85)" }}>Deployment schedule</h2>
+
+            {/* Liquid input */}
+            <div style={{ ...cardStyle, marginBottom: 16 }}>
+              <div style={labelStyle}>Liquid at ATH (snapshot)</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="number" min="0.1" step="0.5" value={liquidInput} onChange={(e) => setLiquidInput(e.target.value)}
+                  style={{ width: 80, fontSize: 20, fontWeight: 500, border: "0.5px solid rgba(0,0,0,0.15)", borderRadius: 6, padding: "6px 10px", fontFamily: "inherit" }} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  {["L","Cr"].map(u => (
+                    <button key={u} onClick={() => setUnit(u)} style={{
+                      fontSize: 12, padding: "5px 12px", fontWeight: unit === u ? 500 : 400,
+                      border: "0.5px solid rgba(0,0,0,0.15)", borderRadius: 6,
+                      background: unit === u ? "#1a1a1a" : "white",
+                      color: unit === u ? "white" : "#1a1a1a", cursor: "pointer", fontFamily: "inherit"
+                    }}>{u}</button>
+                  ))}
+                </div>
+                <span style={{ fontSize: 13, color: "rgba(0,0,0,0.55)" }}>{fmt(liquid)}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", marginTop: 6 }}>Lock this on the day Nifty makes ATH. Fresh income = separate pool.</div>
+            </div>
+
+            {/* Banner */}
+            <div style={{ ...cardStyle, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+              {drop === 0 && (<><span style={{ fontSize: 18, color: "#0F6E56" }}>●</span><span style={{ fontSize: 13, color: "rgba(0,0,0,0.7)" }}>Market at ATH. All {fmt(liquid)} parked, waiting.</span></>)}
+              {drop > 0 && drop < TRANCHES[0].drop && (<><span style={{ fontSize: 18, color: "#854F0B" }}>◐</span><span style={{ fontSize: 13, color: "rgba(0,0,0,0.7)" }}>−{drop}% — below first trigger. Wait for −{TRANCHES[0].drop}%.</span></>)}
+              {drop >= TRANCHES[0].drop && (<><span style={{ fontSize: 18, color: "#A32D2D" }}>▼</span><span style={{ fontSize: 13, color: "rgba(0,0,0,0.7)" }}><strong style={{ color: "#1a1a1a", fontWeight: 500 }}>{activeCount} tranche{activeCount > 1 ? "s" : ""} active.</strong> {fmt(deployed)} deployed · {fmt(remaining)} remaining.</span></>)}
+            </div>
+
+            {/* Tranches */}
+            <div style={{ ...cardStyle, marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "75px 1fr 100px 80px 60px", gap: 8, paddingBottom: 10, borderBottom: "0.5px solid rgba(0,0,0,0.1)" }}>
+                <span style={labelStyle}>Drop</span><span style={labelStyle}>Tranche</span><span style={labelStyle}>Deploy</span><span style={labelStyle}>Cum.</span><span style={labelStyle}>Status</span>
+              </div>
+              {rows.map((r) => {
+                const progress = r.triggered ? 100 : drop >= 1 ? Math.min((drop / r.drop) * 100, 99) : 0;
+                const isNext = !r.triggered && nextTranche?.drop === r.drop;
+                const niftyTarget = ath > 0 ? Math.round(ath * (1 - r.drop / 100)) : 0;
+                return (
+                  <div key={r.drop} style={{
+                    display: "grid", gridTemplateColumns: "75px 1fr 100px 80px 60px", gap: 8,
+                    padding: slabMode === "8" ? "10px 0" : "14px 0",
+                    borderBottom: r.i < TRANCHES.length - 1 ? "0.5px solid rgba(0,0,0,0.08)" : "none",
+                    alignItems: "center"
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: r.triggered ? r.fg : "rgba(0,0,0,0.4)" }}>−{r.drop}%</div>
+                      {niftyTarget > 0 && <div style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", marginTop: 2 }}>≈{niftyTarget.toLocaleString("en-IN")}</div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: r.triggered ? 500 : 400, color: r.triggered ? "#1a1a1a" : "rgba(0,0,0,0.55)" }}>{r.label}</div>
+                      <div style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", marginTop: 1 }}>{r.note}</div>
+                      <div style={{ height: 2, background: "rgba(0,0,0,0.08)", borderRadius: 1, marginTop: 6, maxWidth: 160, overflow: "hidden" }}>
+                        <div style={{ height: "100%", borderRadius: 1, background: r.fg, width: `${progress}%`, transition: "width .3s ease" }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: r.triggered ? 500 : 400, color: r.triggered ? "#1a1a1a" : "rgba(0,0,0,0.5)" }}>{fmt(r.amount)}</div>
+                      <div style={{ fontSize: 10, color: "rgba(0,0,0,0.45)" }}>{r.pct}%</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, color: r.triggered ? "#1a1a1a" : "rgba(0,0,0,0.5)" }}>{r.cumPct}%</div>
+                    </div>
+                    <span style={{
+                      fontSize: 10, padding: "3px 7px", borderRadius: 5, fontWeight: 500, textAlign: "center",
+                      background: r.triggered ? r.bg : isNext ? "#E1F5EE" : "rgba(0,0,0,0.04)",
+                      color: r.triggered ? r.fg : isNext ? "#0F6E56" : "rgba(0,0,0,0.45)"
+                    }}>
+                      {r.triggered ? "deploy" : isNext ? "next" : "wait"}
+                    </span>
+                  </div>
+                );
+              })}
+              <div style={{
+                display: "grid", gridTemplateColumns: "75px 1fr 100px 80px 60px", gap: 8,
+                padding: "12px 4px 4px", marginTop: 6, borderTop: "0.5px solid rgba(0,0,0,0.1)",
+                alignItems: "center", background: "rgba(15, 110, 86, 0.04)", borderRadius: 4
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: "#0F6E56" }}>RESERVE</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56" }}>Tail risk reserve</div>
+                  <div style={{ fontSize: 11, color: "rgba(0,0,0,0.55)", marginTop: 1 }}>For −50%+ scenarios only</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56" }}>{fmt(liquid * 0.10)}</div>
+                  <div style={{ fontSize: 10, color: "rgba(0,0,0,0.45)" }}>10%</div>
+                </div>
+                <div><div style={{ fontSize: 13, color: "rgba(0,0,0,0.5)" }}>—</div></div>
+                <span style={{ fontSize: 10, padding: "3px 7px", borderRadius: 5, fontWeight: 500, textAlign: "center", background: "#E1F5EE", color: "#0F6E56" }}>hold</span>
+              </div>
+            </div>
+
+            {/* Summary stats */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 140, background: "#FCEBEB", borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ ...labelStyle, color: "#791F1F" }}>Deployed</div>
+                <div style={{ fontSize: 20, fontWeight: 500, color: "#501313" }}>{fmt(deployed)}</div>
+                <div style={{ fontSize: 11, color: "#A32D2D", marginTop: 2 }}>{depPct}% of snapshot</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 140, background: "#E1F5EE", borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ ...labelStyle, color: "#085041" }}>Remaining</div>
+                <div style={{ fontSize: 20, fontWeight: 500, color: "#04342C" }}>{fmt(remaining)}</div>
+                <div style={{ fontSize: 11, color: "#0F6E56", marginTop: 2 }}>{remPct}% held back</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 140, background: "#F1EFE8", borderRadius: 8, padding: "14px 16px" }}>
+                <div style={labelStyle}>Next trigger</div>
+                <div style={{ fontSize: 20, fontWeight: 500 }}>{nextTranche ? `−${nextTranche.drop}%` : "—"}</div>
+                <div style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginTop: 2 }}>
+                  {nextTranche
+                    ? useNifty && targetForNext
+                      ? `Nifty ≈${Math.round(targetForNext).toLocaleString("en-IN")} (${Math.round(pointsToNext)} pts away)`
+                      : `${(nextTranche.drop - drop).toFixed(1)}% away · ${fmt(nextTranche.amount)}`
+                    : "all deployed"}
+                </div>
+              </div>
+            </div>
+
+            <details>
+              <summary style={{ fontSize: 12, color: "rgba(0,0,0,0.6)", cursor: "pointer", padding: "8px 0" }}>Framework rules</summary>
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  slabMode === "4" ? "4 slabs (9/18/27/36%) — simpler to execute under stress." : "8 slabs (5/8/12/15/15/15/10/10%) — smoother but more discipline needed.",
+                  "All versions: 90% deployable, 10% reserved for tail risk beyond −40%.",
+                  "Snapshot rule — lock liquid on the day Nifty hits ATH. Fresh income = separate pool.",
+                  "Reset on new ATH — once market recovers, snapshot new liquid and restart.",
+                  "Deploy at first crossing of each threshold — not every time you check.",
+                  "Allocation note — dry powder rarely above 30-35% of total portfolio."
+                ].map((rule, i) => (
+                  <div key={i} style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", lineHeight: 1.6, padding: "0 0 0 12px", borderLeft: "2px solid rgba(0,0,0,0.1)" }}>{rule}</div>
+                ))}
+              </div>
+            </details>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
